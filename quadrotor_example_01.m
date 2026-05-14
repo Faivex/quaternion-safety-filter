@@ -49,7 +49,7 @@ omega_max = 5.0;  % rad/s
 x_max = [q_v_max; q_v_max; q_v_max; omega_max; omega_max; omega_max];
 
 % Control input constraints
-u_max = [1e-4; 1e-4; 1e-4];  % N·m (increased 10x from original)
+u_max = [1e-4; 1e-4; 1e-4];  % N·m
 
 fprintf('\n=== Safety Constraints ===\n');
 fprintf('Max attitude angle: %.1f deg\n', theta_max_deg);
@@ -112,19 +112,11 @@ for alpha = alpha_vals
             
             % Input constraints
             for i = 1:m
-                e_i = zeros(m,1);
-                e_i(i) = 1;
                 [Q, Y(i,:)'; ...
                  Y(i,:), u_max(i)^2] >= 0;
             end
 
             % State constraints
-            % for i = 1:n
-            %     c_i = zeros(n,1)';
-            %     c_i(i) = 1;
-            %     [Q,       Q*c_i'; ...
-            %      c_i*Q,  x_max(i)^2] >= 0;
-            % end
             C_1 = [eye(3), zeros(3)];  % Extract q_v part of state
             [Q,       Q*C_1'; ...
             C_1*Q,  q_v_max^2*eye(3)] >= 0;
@@ -304,10 +296,6 @@ for k = 1:length(time)-1
 end
 
 plotSafetyResults(time, x_safe, x_unsafe, u_safe, u_unsafe, x_goal, q_v_max, u_max, P, h_min, h_max, 'results/quadrotor_example_01');
-
-% Plot results comparing both scenarios
-% plotResults(time, x_safe, x_unsafe, u_safe, u_unsafe, w, d_max, P, alpha_fun, ...
-%            u_max, x_max, [x_des; y_des], 'results/quadrotor_example_01');
 
 % Functions
 function F_x = F(state, params)
