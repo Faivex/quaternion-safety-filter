@@ -63,14 +63,6 @@ fprintf('omega_max: %.2f rad/s\n', omega_max);
 gamma_squared = 0.5 * (1 - sqrt(1 - q_v_max^2));
 gamma = sqrt(gamma_squared);
 
-% For comparison, compute small-angle approximation
-gamma_approx = q_v_max / 2;
-
-fprintf('\n=== Exact Sector Bound ===\n');
-fprintf('Rigorous bound: gamma = %.6f\n', gamma);
-fprintf('Small-angle approx: gamma ≈ q_v_max/2 = %.6f\n', gamma_approx);
-fprintf('Relative difference: %.2f%%\n', abs(gamma - gamma_approx)/gamma * 100);
-
 %% Sector Bound Extraction Matrix
 % E_sec extracts omega from state z = [q_v; omega]
 E_sec = [zeros(3,3), eye(3)];
