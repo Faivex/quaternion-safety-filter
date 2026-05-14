@@ -20,13 +20,11 @@ This repository provides the code to reproduce all simulation results in the pap
 
 | File | Description |
 |------|-------------|
-| `quadrotor_example_00.m` | RCI set synthesis only — computes and displays the ellipsoidal safe set |
 | `quadrotor_example_01.m` | **Scenario I**: set-point tracking, small goal at (2, 1) m — nominal operation |
 | `quadrotor_example_02.m` | **Scenario II**: set-point tracking, distant goal at (25, 15) m — large initial errors triggering filter |
 | `quadrotor_example_03.m` | **Scenario III**: circular trajectory (radius 5 m, 1 rad/s) — persistent attitude excitation |
 | `loadSystemParameters.m` | Crazyflie 2.0 quadrotor parameters (mass, inertia) |
-| `plotResults.m` | Position and attitude trajectory plotting |
-| `plotSafetyResults.m` | Safety metric plots (RCI boundary, mixing coefficient, sector bound ratio) |
+| `plotSafetyResults.m` | 2×3 paper figure: position, Euler angles, torques, quaternion norm, Lyapunov function, sector bound ratio |
 | `formatFigureIEEE.m` | Figure formatting utility for IEEE-style plots |
 
 ## Running the Simulations
@@ -34,9 +32,6 @@ This repository provides the code to reproduce all simulation results in the pap
 Open MATLAB, navigate to this folder, and run any of the scenario scripts:
 
 ```matlab
-% Synthesis only
-quadrotor_example_00
-
 % Scenario I — small setpoint
 quadrotor_example_01
 
