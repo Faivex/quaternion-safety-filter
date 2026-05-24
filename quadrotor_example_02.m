@@ -38,7 +38,7 @@ fprintf('Controllability rank: %d (should be %d)\n', rank(ctrb(A, B)), n);
 
 %% Safety Constraints
 % Attitude constraint: ||q_v|| <= q_v_max = sin(theta_max/2)
-theta_max_deg = 40;  % degrees
+theta_max_deg = 60;  % degrees
 theta_max_rad = theta_max_deg * pi / 180;
 q_v_max = sin(theta_max_rad / 2);
 
@@ -181,10 +181,25 @@ u_unsafe = zeros(m, length(time));
 x_safe(:,1) = x0; % set initial condition
 x_unsafe(:,1) = x0; % set initial condition
 
+% CBF baseline allocations
+x_cbf = zeros(length(x0), length(time));
+u_cbf = zeros(m, length(time));
+x_cbf(:,1) = x0;
+qp_infeas_log = false(1, length(time));
+slack_log     = zeros(1, length(time));
+
 % Define alpha as a function handle before simulation loop
 h_max = 0.9;
 h_min = 0.1;
 alpha_fun = @(x) min(max((x'*P*x - h_min)/(h_max - h_min), 0), 1);
+
+% CBF-QP filter options (HOCBF with slack relaxation; see safety_filter_cbf.m)
+cbf_opts = struct();
+cbf_opts.q_v_max       = q_v_max;
+cbf_opts.u_max         = u_max;
+cbf_opts.kappa_0       = 20;
+cbf_opts.kappa_1       = 10;
+cbf_opts.slack_penalty = 100;
 
 % Define Goal (Explicitly for plotting)
 x_des = 25;
@@ -199,12 +214,14 @@ Kd_x = 0.2;  % position derivative gain
 
 % Simulation loop
 for k = 1:length(time)-1
-    % Run both scenarios in parallel
-    for scenario = 1:2
+    % Run all three scenarios in parallel: 1=LMI safe, 2=unsafe, 3=CBF
+    for scenario = 1:3
         if scenario == 1
             x_current = x_safe(:,k);
-        else
+        elseif scenario == 2
             x_current = x_unsafe(:,k);
+        else
+            x_current = x_cbf(:,k);
         end
         
         vx = x_current(4);
@@ -238,16 +255,19 @@ for k = 1:length(time)-1
         end
         
         if scenario == 1
-            % With safety filter
-            % Compute quaternion and angular velocity part of state for alpha computation
-            % quaternion = eul2quat(x_current(7:9)');
+            % With LMI safety filter
             quat = eul2quat(x_current(7:9)', 'XYZ');
-            x_filtered = [quat(2:4)'; x_current(10:12)]; % extract q_v and omega
+            x_filtered = [quat(2:4)'; x_current(10:12)];
             alpha = alpha_fun(x_filtered);
             u_current = (alpha)*K*x_filtered + (1 - alpha)*u_nominal;
-        else
+        elseif scenario == 2
             % Without safety filter
             u_current = u_nominal;
+        else
+            % With CBF-QP safety filter
+            quat = eul2quat(x_current(7:9)', 'XYZ');
+            x_filtered = [quat(2:4)'; x_current(10:12)];
+            [u_current, qp_infeas_log(k), ~, slack_log(k)] = safety_filter_cbf(x_filtered, u_nominal, params, cbf_opts);
         end
 
         % Add coriolis and gyroscopic effects compensation to the control input
@@ -264,11 +284,13 @@ for k = 1:length(time)-1
         %     end
         % end
 
-        % Store saturated control inputs
+        % Store control inputs (after gyroscopic comp)
         if scenario == 1
             u_safe(:,k) = u_current;
-        else
+        elseif scenario == 2
             u_unsafe(:,k) = u_current;
+        else
+            u_cbf(:,k) = u_current;
         end
 
         % Define disturbance values
@@ -281,13 +303,47 @@ for k = 1:length(time)-1
         
         if scenario == 1
             x_safe(:,k+1) = x_next(end,:)';
-        else
+        elseif scenario == 2
             x_unsafe(:,k+1) = x_next(end,:)';
+        else
+            x_cbf(:,k+1) = x_next(end,:)';
         end
     end
 end
 
-plotSafetyResults(time, x_safe, x_unsafe, u_safe, u_unsafe, x_goal, q_v_max, u_max, P, h_min, h_max, 'results/quadrotor_example_02');
+
+% Three-way comparison with CBF baseline
+plotSafetyResults(time, x_safe, x_unsafe, x_cbf, u_safe, u_unsafe, u_cbf, ...
+                       x_goal, q_v_max, omega_max, u_max, ...
+                       qp_infeas_log, slack_log, ...
+                       'results/quadrotor_example_02');
+
+%% Comparison summary
+fprintf('\n=== Comparison Summary (Scenario 2: large goal) ===\n');
+qv_safe_traj = eul2quat(x_safe(7:9,:)',   'XYZ'); qv_safe_traj = qv_safe_traj(:,2:4)';
+qv_uns_traj  = eul2quat(x_unsafe(7:9,:)', 'XYZ'); qv_uns_traj  = qv_uns_traj(:,2:4)';
+qv_cbf_traj  = eul2quat(x_cbf(7:9,:)',    'XYZ'); qv_cbf_traj  = qv_cbf_traj(:,2:4)';
+max_qv_safe  = max(vecnorm(qv_safe_traj, 2, 1));
+max_qv_uns   = max(vecnorm(qv_uns_traj,  2, 1));
+max_qv_cbf   = max(vecnorm(qv_cbf_traj,  2, 1));
+mean_int_lmi = mean(vecnorm(u_safe(:,1:end-1), 2, 1));
+mean_int_cbf = mean(vecnorm(u_cbf(:,1:end-1),  2, 1));
+n_infeas     = sum(qp_infeas_log);
+qv_norm_cbf  = vecnorm(qv_cbf_traj, 2, 1);
+viol_idx     = find(qv_norm_cbf > q_v_max, 1, 'first');
+if isempty(viol_idx)
+    t_first_viol_str = 'never';
+else
+    t_first_viol_str = sprintf('%.2f s', time(viol_idx));
+end
+fprintf('  max ||q_v||      Proposed=%.4f   Nominal=%.4f   HOCBF=%.4f   (bound=%.4f)\n', ...
+    max_qv_safe, max_qv_uns, max_qv_cbf, q_v_max);
+fprintf('  mean ||u||       Proposed=%.3e   HOCBF=%.3e\n', mean_int_lmi, mean_int_cbf);
+fprintf('  HOCBF slack-active steps: %d / %d (%.1f%%)\n', ...
+    n_infeas, length(time)-1, 100*n_infeas/(length(time)-1));
+fprintf('  HOCBF first constraint violation: %s\n', t_first_viol_str);
+fprintf('  constraint OK:   Proposed=%d   HOCBF=%d\n', ...
+    max_qv_safe <= q_v_max, max_qv_cbf <= q_v_max);
 
 % Functions
 function F_x = F(state, params)
