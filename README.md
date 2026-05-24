@@ -99,7 +99,6 @@ If you use this code, please cite:
 @inproceedings{pordal2026quaternion,
   title     = {Robust Safety Filter Synthesis for Quaternion Attitude Dynamics via {LMI}-Based Ellipsoidal Invariant Sets},
   author    = {Pordal, Reza and Sharifi, Alireza and Baniasad, Ali},
-  booktitle = {Proceedings of the IEEE Conference},
   year      = {2026}
 }
 ```
